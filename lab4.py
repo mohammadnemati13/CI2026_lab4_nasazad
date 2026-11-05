@@ -1,18 +1,3 @@
-"""Lab 4 - Generalized Klotski solved with Breadth-First Search and A*.
-
-Model
-  * A move slides one piece by exactly one cell (up, down, left or right) and costs 1.
-  * Exit columns are 0-based: the goal is reached when the target piece covers every
-    bottom-row cell under the exit.
-  * Non-target pieces with the same shape are interchangeable. A state stores the target
-    position followed, shape by shape, by the sorted positions of the other pieces.
-    This is exact (the goal only looks at the target) and shrinks the state space a lot:
-    p02 alone has ten 1x1 tiles, i.e. 10! labelled boards for every merged state.
-
-Usage:  python lab4.py [problems.txt] [--boards] [problem ids...]
-        --boards prints the board after every move of the A* solution.
-        Problem ids (e.g. p01 p03) restrict the run to those problems.
-"""
 import heapq
 import sys
 import textwrap
@@ -25,13 +10,12 @@ DIRECTIONS = {'up': (-1, 0), 'down': (1, 0), 'left': (0, -1), 'right': (0, 1)}
 
 
 def parse_problems(path):
-    """Read all problems of a benchmark file (the format is described in its header)."""
     problems, current, board = [], None, None
     for line in Path(path).read_text(encoding='utf-8').splitlines():
         line = line.strip()
         if not line or line.startswith('#'):
             continue
-        if set(line) == {'='}:                      # '=========' opens or closes a board
+        if set(line) == {'='}:
             if board is None:
                 board = []
             else:
@@ -64,12 +48,6 @@ def parse_problems(path):
 
 
 class Klotski:
-    """One board as a search problem: start state, legal moves, goal test and heuristic.
-
-    A position is the index (row * cols + col) of a piece's top-left cell, and a state is a
-    tuple of positions: the target first, then each group of same-shaped pieces, sorted.
-    """
-
     def __init__(self, problem):
         self.rows, self.cols = rows, cols = problem['rows'], problem['cols']
         target = problem['target']
@@ -79,7 +57,7 @@ class Klotski:
             for c, token in enumerate(row):
                 if token != '.':
                     cells.setdefault(token, []).append((r, c))
-        pieces = {}                                  # name -> (top, left, height, width)
+        pieces = {}
         for name, where in cells.items():
             top, left = min(r for r, _ in where), min(c for _, c in where)
             h = max(r for r, _ in where) - top + 1
@@ -88,15 +66,14 @@ class Klotski:
                 raise ValueError(f"{problem['id']}: piece {name} is not a rectangle")
             pieces[name] = (top, left, h, w)
 
-        # The target is a group on its own, even if other pieces have its shape.
         others = {}
         for name, (top, left, h, w) in pieces.items():
             if name != target:
                 others.setdefault((h, w), []).append(top * cols + left)
         top, left, h, w = pieces[target]
         start = [top * cols + left]
-        self.shapes = [(h, w)]                       # shape of the piece in each state slot
-        self.group = [(0, 1)]                        # slice of the state holding its group
+        self.shapes = [(h, w)]
+        self.group = [(0, 1)]
         for shape in sorted(others):
             begin = len(start)
             start += sorted(others[shape])
@@ -104,8 +81,6 @@ class Klotski:
             self.group += [(begin, len(start))] * len(others[shape])
         self.start = tuple(start)
 
-        # mask[shape][pos]: bitmask of the cells covered by a piece of that shape at pos.
-        # step[shape][pos]: {direction: new position} for the one-cell moves inside the board.
         self.mask, self.step = {}, {}
         for shape in set(self.shapes):
             h, w = shape
@@ -119,7 +94,6 @@ class Klotski:
                         for d, (dr, dc) in DIRECTIONS.items()
                         if 0 <= r + dr <= rows - h and 0 <= c + dc <= cols - w}
 
-        # Goal positions: the target sits on the bottom row and covers every exit column.
         h, w = self.shapes[0]
         exits = problem['exit']
         self.goals = {(rows - h) * cols + c
@@ -127,19 +101,17 @@ class Klotski:
         if not self.goals:
             raise ValueError(f"{problem['id']}: the target cannot cover all the exit cells")
         self.goal_cells = [divmod(g, cols) for g in self.goals]
-        # Cells the target covers in every goal position: any other piece there must move.
         self.must_clear = -1
         for g in self.goals:
             self.must_clear &= self.mask[self.shapes[0]][g]
 
     def successors(self, state):
-        """Yield (next_state, move) for every legal move; a move is (position, direction)."""
         mask = self.mask
         occupied = 0
         for shape, pos in zip(self.shapes, state):
             occupied |= mask[shape][pos]
         for i, (shape, pos) in enumerate(zip(self.shapes, state)):
-            rest = occupied ^ mask[shape][pos]       # every cell except this piece's own
+            rest = occupied ^ mask[shape][pos]
             for d, new in self.step[shape][pos].items():
                 if not (mask[shape][new] & rest):
                     nxt = list(state)
@@ -153,12 +125,6 @@ class Klotski:
         return state[0] in self.goals
 
     def heuristic(self, state):
-        """Lower bound on the moves still needed, so A* stays optimal.
-
-        The target needs at least its Manhattan distance to the goal in moves of its own,
-        and every other piece covering a goal cell must move at least once. Each move changes
-        only one of the two terms, by at most 1, so the heuristic is also consistent.
-        """
         r, c = divmod(state[0], self.cols)
         distance = min(abs(r - gr) + abs(c - gc) for gr, gc in self.goal_cells)
         blockers = sum(1 for shape, pos in zip(self.shapes[1:], state[1:])
@@ -167,9 +133,8 @@ class Klotski:
 
 
 def bfs(puzzle):
-    """Breadth-first search; optimal because every move costs 1."""
     started = time.perf_counter()
-    parent = {puzzle.start: None}                    # doubles as the set of reached states
+    parent = {puzzle.start: None}
     frontier = deque([puzzle.start])
     expanded = 0
     goal = puzzle.start if puzzle.is_goal(puzzle.start) else None
@@ -179,7 +144,7 @@ def bfs(puzzle):
         for nxt, move in puzzle.successors(state):
             if nxt not in parent:
                 parent[nxt] = (state, move)
-                if puzzle.is_goal(nxt):              # goal test when the state is generated
+                if puzzle.is_goal(nxt):
                     goal = nxt
                     break
                 frontier.append(nxt)
@@ -187,20 +152,19 @@ def bfs(puzzle):
 
 
 def astar(puzzle):
-    """A* search with Klotski.heuristic; optimal because the heuristic is consistent."""
     started = time.perf_counter()
     h = puzzle.heuristic(puzzle.start)
     tie = count()
-    frontier = [(h, h, next(tie), 0, puzzle.start)]  # (f, h, tie-break, g, state)
+    frontier = [(h, h, next(tie), 0, puzzle.start)]
     best_g = {puzzle.start: 0}
     parent = {puzzle.start: None}
     expanded, goal = 0, None
     while frontier:
         _, _, _, g, state = heapq.heappop(frontier)
         if g > best_g[state]:
-            continue                                 # stale entry: a cheaper path was found
+            continue
         expanded += 1
-        if puzzle.is_goal(state):                    # goal test when the state is expanded
+        if puzzle.is_goal(state):
             goal = state
             break
         for nxt, move in puzzle.successors(state):
@@ -225,11 +189,6 @@ def search_result(parent, goal, expanded, started):
 
 
 def replay(problem, moves):
-    """Play the moves on a plain grid of piece names, checking every move and the goal.
-
-    This does not use the bitmask model at all, so it double-checks the solver.
-    Returns the moves written with piece names and the board after each move.
-    """
     rows, cols = problem['rows'], problem['cols']
     grid = [row[:] for row in problem['board']]
     named, boards = [], []
