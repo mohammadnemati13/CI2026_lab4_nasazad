@@ -267,3 +267,10 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# Peer review (Lab 4) by Mohammad Nemati:
+# I ran the code on all six problems and checked the results.
+# BFS and A* give the same optimal number of moves (8, 18, 45, 116, 179) and p06 has no solution.
+# The heuristic is admissible: the target needs at least `distance` moves and every blocker
+# on the goal cells needs at least one move. Bitmasks and sorted same-shape groups make it very fast.
